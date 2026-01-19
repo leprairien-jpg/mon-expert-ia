@@ -3,7 +3,7 @@ import google.generativeai as genai
 from PIL import Image
 
 # Ta clé API
-API_KEY = "AIzaSyC76UhzkSGVJ2S4IhjULgVm3HwAqkZa5ag" 
+API_KEY = st.secrets["GEMINI_API_KEY"] 
 genai.configure(api_key=API_KEY)
 
 st.set_page_config(page_title="Prompt Master Debug", layout="centered")
