@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# --- 1. SÉCURITÉ ---
+# --- 1. SÉCURITÉ & CONFIGURATION ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -10,55 +10,51 @@ except Exception:
     st.error("❌ Configuration manquante : Ajoutez GEMINI_API_KEY dans les Secrets.")
     st.stop()
 
-st.set_page_config(page_title="Universal Prompt Engine", layout="centered")
-st.title("🔬 Maître Ingénieur Multimodal")
+st.set_page_config(page_title="Retouche IA Haute Fidélité", layout="centered")
+st.title("📸 Expert Retouche & Consistance")
 
-# --- 2. LOGIQUE DE SÉLECTION DU MODÈLE ---
-try:
-    # On force l'utilisation du 2.5 Flash s'il est dispo, sinon le 1.5
-    available = [m.name for m in genai.list_models()]
-    model_id = "models/gemini-2.5-flash" if "models/gemini-2.5-flash" in available else "models/gemini-1.5-flash"
-except:
-    model_id = "gemini-1.5-flash"
+# Sélection du modèle
+model_id = "models/gemini-2.5-flash" # Modèle de 2026 ultra-précis
 
-# --- 3. INTERFACE ---
-uploaded_file = st.file_uploader("📸 Choisissez une photo (Galerie)", type=['jpg', 'jpeg', 'png'])
+# --- 2. INTERFACE ---
+uploaded_file = st.file_uploader("Sélectionnez la photo originale", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file:
-    # On s'assure que l'image est chargée proprement
     image = Image.open(uploaded_file)
-    st.image(image, caption="Référence chargée", use_container_width=True)
+    st.image(image, caption="Référence originale (Identité source)", use_container_width=True)
     
-    user_text = st.text_area("🔧 Modifications souhaitées :", placeholder="Ex: Rendre blond, ajouter des bijoux, changer le fond...")
+    user_text = st.text_area("🔧 Modifications de l'environnement / style :", 
+                             placeholder="Ex: Rendre blond, ajouter des bijoux en or, décor de plage paradisiaque...")
 
-    if st.button("GÉNÉRER L'INGÉNIERIE", type="primary"):
+    if st.button("GÉNÉRER LE PROMPT DE RETOUCHE", type="primary"):
         if user_text:
             model = genai.GenerativeModel(model_id)
             
-            # CONSIGNE STRICTE : Préservation de l'identité
+            # LOGIQUE D'EXPERTISE ACCENTUÉE SUR LE VISAGE
             system_instruction = f"""
-            Tu es un Maître Ingénieur en Prompt. 
-            ANALYSE : Étudie précisément les traits faciaux, l'ossature et l'identité de la personne sur l'IMAGE.
-            MISSION : Créer un prompt pour une IA génératrice d'image.
-            CONDITION CRITIQUE : Le visage doit être conservé à 100%. L'identité doit être immédiatement reconnaissable.
-            MODIFICATIONS À APPLIQUER : {user_text}.
+            Tu es un Ingénieur Expert en 'Face Consistency' pour IA générative.
             
-            FORMAT DE RÉPONSE :
-            Donne uniquement le PROMPT_ULTIME_POSITIF et le PROMPT_ULTIME_NÉGATIF.
-            Utilise des termes techniques (8k, photorealistic, cinematic lighting, focal length 85mm).
+            ANALYSE PRIORITAIRE :
+            - Analyse mathématique et visuelle du visage sur l'IMAGE : structure osseuse, forme des yeux, commissures des lèvres.
+            
+            MISSION DE RÉDACTION :
+            - Créer un prompt où le visage est décrit comme 'Identique à la source, aucune modification des traits faciaux'.
+            - Appliquer les modifications demandées : {user_text}.
+            
+            STRUCTURE DU PROMPT :
+            - Utilise 'Photorealistic face mapping' et 'Zero facial alteration'.
+            - Décris les nouveaux éléments (cheveux, bijoux, décor) avec une précision chirurgicale.
+            - Format : PROMPT_ULTIME_POSITIF et PROMPT_ULTIME_NÉGATIF.
             """
             
-            with st.spinner("Analyse et protection de l'identité..."):
+            with st.spinner("Analyse faciale et calcul des modifications..."):
                 try:
                     response = model.generate_content([system_instruction, image])
-                    st.markdown("### ✨ Résultat de l'Expertise")
+                    st.markdown("### 🛠 Votre Prompt de Retouche Optimisé")
                     
-                    # Utilisation de st.code pour permettre la copie facile (bouton intégré)
+                    # Bloc de copie automatique
                     st.code(response.text, language="markdown")
                     
-                    st.info("💡 Cliquez sur l'icône en haut à droite du bloc gris pour copier le prompt.")
+                    st.info("ℹ️ Copiez ce texte dans votre générateur d'images (Flux, Midjourney, etc.) pour obtenir le résultat.")
                 except Exception as e:
                     st.error(f"Erreur : {e}")
-        else:
-            st.warning("Précisez les modifications voulues.")
-
