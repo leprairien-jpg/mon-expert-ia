@@ -2,62 +2,45 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# --- CONFIGURATION SÉCURISÉE ---
-# Ta clé est intégrée ici, mais pense à utiliser les Secrets Streamlit plus tard
+# Ta clé API
 API_KEY = "AIzaSyC76UhzkSGVJ2S4IhjULgVm3HwAqkZa5ag" 
+
+# Configuration de l'API avec la version stable
 genai.configure(api_key=API_KEY)
 
-# Configuration de l'interface
 st.set_page_config(page_title="Prompt Master Pro", layout="centered")
-
 st.title("🚀 Prompt Master Engineering")
-st.write("Expert IA Multimodal pour la génération de prompts optimisés")
 
-# --- ZONE D'UPLOAD ---
-uploaded_file = st.file_uploader("Choisissez une photo de référence (JPG, PNG)", type=['jpg', 'jpeg', 'png'])
+uploaded_file = st.file_uploader("Choisissez une photo", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
-    # Lecture et affichage de l'image
-    try:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Image source détectée", use_container_width=True)
-        
-        user_text = st.text_input("Votre concept de base :", placeholder="Ex: Un guerrier cyberpunk dans une ruelle...")
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Image source", use_container_width=True)
+    
+    user_text = st.text_input("Concept :", placeholder="Ex: Cyberpunk city")
 
-        if st.button("GÉNÉRER L'EXPERTISE", type="primary"):
-            if user_text:
-                # Utilisation du modèle flash-latest pour éviter l'erreur 404
-                model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                
-                # Instruction structurée pour l'Expert IA
-                instruction = """Tu es un Maître Ingénieur en Prompt Multimodal. 
-                Analyse l'IMAGE et le TEXTE fournis. 
-                Génère deux sections précises :
-                
-                1. PROMPT_ULTIME_POSITIF : Une description ultra-détaillée intégrant le style visuel de l'image, 
-                les réglages de caméra (f/1.8, 85mm), l'éclairage cinématique et les textures.
-                
-                2. PROMPT_ULTIME_NÉGATIF : Une liste de mots-clés pour éviter les déformations, le flou et les erreurs d'IA.
-                
-                Réponds en français avec une structure claire."""
-                
-                with st.spinner("Analyse technique en cours..."):
+    if st.button("GÉNÉRER"):
+        if user_text:
+            # On utilise ici le nom de modèle le plus standard
+            # Si 'gemini-1.5-flash' échoue, 'gemini-pro-vision' est l'ancien standard
+            model_name = 'gemini-1.5-flash' 
+            
+            model = genai.GenerativeModel(model_name)
+            
+            instruction = "Tu es un Maître Ingénieur en Prompt. Analyse l'image et le texte pour créer un PROMPT_ULTIME_POSITIF et un PROMPT_ULTIME_NÉGATIF."
+            
+            with st.spinner(f"Analyse avec {model_name}..."):
+                try:
+                    # Tentative de génération
+                    response = model.generate_content([instruction, image, user_text])
+                    st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"Erreur avec {model_name} : {e}")
+                    st.info("Essai du modèle alternatif...")
+                    # Tentative de secours (Fallback)
                     try:
-                        # Appel à l'IA avec le modèle mis à jour
-                        response = model.generate_content([instruction, image, user_text])
-                        
-                        st.success("Analyse terminée !")
-                        st.markdown("---")
-                        # Affichage du résultat
+                        alt_model = genai.GenerativeModel('gemini-pro-vision')
+                        response = alt_model.generate_content([instruction, image, user_text])
                         st.markdown(response.text)
-                        
-                    except Exception as e:
-                        st.error(f"Erreur lors de la génération : {e}")
-                        st.info("Astuce : Vérifiez que votre quota API n'est pas dépassé.")
-            else:
-                st.warning("⚠️ Veuillez saisir un texte pour guider l'IA.")
-    except Exception as e:
-        st.error(f"Erreur de chargement de l'image : {e}")
-
-else:
-    st.info("📸 Veuillez uploader une image pour commencer l'analyse.")
+                    except Exception as e2:
+                        st.error("Tous les modèles ont échoué. Vérifiez vos restrictions de clé API dans Google AI Studio.")
