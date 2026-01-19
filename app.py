@@ -1,28 +1,49 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import io
 
-# 1. Ta Clé API
-API_KEY = "AIzaSyC76UhzkSGVJ2S4IhjULgVm3HwAqkZa5ag" 
-genai.configure(api_key=API_KEY)
+# 1. Sécurisation de la Clé API via les Secrets Streamlit
+if "AIzaSyC76UhzkSGVJ2S4IhjULgVm3HwAqkZa5ag" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("⚠️ Clé API manquante dans les Secrets !")
 
-# 2. Les instructions de l'Expert
-SYSTEM_INSTRUCTION = "Tu es un Maître Ingénieur en Prompt. Analyse l'image et le texte pour créer un PROMPT_ULTIME_POSITIF (détaillé, technique) et un PROMPT_ULTIME_NÉGATIF (erreurs à éviter)."
+st.set_page_config(page_title="Prompt Master Pro", layout="centered")
 
-st.set_page_config(page_title="Prompt Master", layout="wide")
-st.title("🎨 Prompt Master App")
+st.title("🚀 Prompt Master Engineering")
 
-# 3. L'Interface
-img_file = st.file_uploader("Charge ton image de référence", type=['jpg', 'png', 'jpeg'])
-user_text = st.text_input("Ton idée de base", "Un paysage futuriste")
+# 2. Zone d'upload avec retour visuel immédiat
+uploaded_file = st.file_uploader("Choisissez une photo de référence", type=['jpg', 'jpeg', 'png'])
 
-if st.button("Générer l'ingénierie"):
-    if img_file and user_text:
-        img = Image.open(img_file)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        with st.spinner("L'expert travaille..."):
-            response = model.generate_content([SYSTEM_INSTRUCTION, img, user_text])
-            st.markdown(response.text)
-    else:
-        st.error("Ajoute une image et un texte !")
+if uploaded_file is not None:
+    # On charge l'image en mémoire pour s'assurer qu'elle est valide
+    image = Image.open(uploaded_file)
+    
+    # AFFICHAGE DE LA PHOTO (C'est cette partie qui manquait peut-être de robustesse)
+    st.image(image, caption="Image chargée avec succès", use_container_width=True)
+    
+    user_text = st.text_input("Votre concept de base :", placeholder="Ex: Un guerrier cyberpunk...")
+
+    if st.button("GÉNÉRER L'EXPERTISE", type="primary"):
+        if user_text:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # Système d'instruction pour l'IA
+            instruction = """Tu es un Ingénieur Expert. Analyse l'image et le texte. 
+            Donne moi :
+            PROMPT_ULTIME_POSITIF: (Description technique complète)
+            PROMPT_ULTIME_NÉGATIF: (Éléments à bannir)"""
+            
+            with st.spinner("Analyse technique en cours..."):
+                try:
+                    # Envoi à l'IA
+                    response = model.generate_content([instruction, image, user_text])
+                    
+                    st.success("Analyse terminée !")
+                    st.markdown("---")
+                    st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"Erreur lors de l'analyse : {e}")
+        else:
+            st.warning("Veuillez saisir un concept de base.")
