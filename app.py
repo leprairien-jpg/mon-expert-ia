@@ -3,7 +3,7 @@ import google.generativeai as genai
 from PIL import Image
 
 # 1. Ta Clé API
-API_KEY = "TA_CLE_API_ICI" 
+API_KEY = "AIzaSyC76UhzkSGVJ2S4IhjULgVm3HwAqkZa5ag" 
 genai.configure(api_key=API_KEY)
 
 # 2. Les instructions de l'Expert
