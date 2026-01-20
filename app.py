@@ -10,16 +10,15 @@ except:
     st.error("Configurez la clé API dans les Secrets.")
     st.stop()
 
-st.set_page_config(page_title="Retouche Pro Multimodale", layout="centered")
-
-# Initialisation de la mémoire tampon pour les photos
-if 'gallery' not in st.session_state:
-    st.session_state.gallery = []
+st.set_page_config(page_title="Retouche Pro Ultra", layout="centered")
 
 st.title("📸 Expert Retouche & Identité")
+st.write("Optimisé pour Bibliothèque Android / Google Photos")
 
-# --- 2. SYSTÈME DE SÉLECTION AMÉLIORÉ ---
-# 'accept_multiple_files' stabilise le sélecteur Android
+# --- 2. SYSTÈME DE CAPTURE ROBUSTE ---
+# On utilise un conteneur pour stabiliser l'affichage
+container = st.container()
+
 uploaded_files = st.file_uploader(
     "Accéder à votre bibliothèque", 
     type=['jpg', 'jpeg', 'png'], 
@@ -27,38 +26,35 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    # On stocke les fichiers dans la session pour éviter les pertes de connexion mobile
-    st.session_state.gallery = uploaded_files
+    for uploaded_file in uploaded_files:
+        try:
+            # FORCE DOWNLOAD : On lit les octets immédiatement pour forcer Android
+            # à télécharger la photo depuis le cloud si nécessaire.
+            file_bytes = uploaded_file.read() 
+            
+            if file_bytes:
+                # Conversion en image exploitable
+                img = Image.open(io.BytesIO(file_bytes))
+                
+                with container:
+                    st.image(img, caption=f"Chargé : {uploaded_file.name}", use_container_width=True)
+                    
+                    user_text = st.text_input(f"Modifications pour {uploaded_file.name} :", key=uploaded_file.name)
 
-# --- 3. AFFICHAGE ET TRAITEMENT ---
-if st.session_state.gallery:
-    # On affiche la dernière photo sélectionnée (ou on peut faire une boucle)
-    last_file = st.session_state.gallery[-1]
-    
-    try:
-        image = Image.open(last_file)
-        st.image(image, caption=f"Cible : {last_file.name}", use_container_width=True)
-        
-        user_text = st.text_input("Modifications souhaitées (Visage intouchable) :")
+                    if st.button(f"🚀 GÉNÉRER POUR {uploaded_file.name}"):
+                        if user_text:
+                            model = genai.GenerativeModel('gemini-2.5-flash')
+                            instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif."
+                            
+                            with st.spinner("Analyse faciale en cours..."):
+                                response = model.generate_content([instruction, img])
+                                st.code(response.text)
+                        else:
+                            st.warning("Écris tes modifs !")
+                st.markdown("---")
+        except Exception as e:
+            st.error(f"Erreur sur {uploaded_file.name} : La photo est peut-être encore en cours de synchronisation sur votre téléphone.")
 
-        if st.button("🚀 GÉNÉRER L'INGÉNIERIE", type="primary"):
-            if user_text:
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                instruction = f"""
-                Tu es un expert en Face Consistency. 
-                Garde le visage EXACT de cette personne. 
-                Applique ces retouches : {user_text}. 
-                Génère un PROMPT_ULTIME_POSITIF et NÉGATIF en anglais.
-                """
-                with st.spinner("Analyse faciale..."):
-                    response = model.generate_content([instruction, image])
-                    st.code(response.text)
-            else:
-                st.warning("Veuillez décrire vos retouches.")
-
-    except Exception as e:
-        st.error(f"Erreur d'accès à la bibliothèque : {e}")
-
-    if st.button("🗑️ Vider la sélection"):
-        st.session_state.gallery = []
-        st.rerun()
+# Bouton de nettoyage
+if st.button("🗑️ Vider tout"):
+    st.rerun()
