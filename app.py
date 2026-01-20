@@ -3,50 +3,54 @@ import google.generativeai as genai
 from PIL import Image
 import io
 
-# 1. Configuration de base ultra-rapide
-st.set_page_config(page_title="Retouche Rapide", layout="centered")
-
-# On cache la configuration pour ne pas ralentir le démarrage
+# --- 1. CONFIGURATION RAPIDE & CACHÉE ---
 @st.cache_resource
-def init_genai():
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+def get_ai_model():
+    # Utilisation sécurisée de la clé API via Secrets
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
     return genai.GenerativeModel('gemini-2.5-flash')
 
-model = init_genai()
+st.set_page_config(page_title="Retouche Identité Pro", layout="centered")
 
-st.title("📸 Master Retouche")
+# --- 2. LOGIQUE D'AFFICHAGE DIRECT ---
+st.title("📸 Master Retouche Identité")
 
-# 2. Zone d'upload avec "st.empty" pour éviter le gel de l'écran
-upload_placeholder = st.empty()
-uploaded_file = upload_placeholder.file_uploader("Choisir une photo", type=['jpg', 'jpeg', 'png'])
+# On utilise l'uploader standard mais avec une lecture de bytes immédiate
+uploaded_file = st.file_uploader("Sélectionnez votre photo", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
-    # On affiche un message de chargement local pour rassurer l'utilisateur
-    with st.status("📥 Réception de l'image...", expanded=False) as status:
-        try:
-            # On utilise BytesIO pour ne pas saturer la RAM du téléphone
-            image_bytes = uploaded_file.getvalue()
-            image = Image.open(io.BytesIO(image_bytes))
-            status.update(label="✅ Image reçue !", state="complete")
-            
-            # Affichage de l'image réduite pour économiser la bande passante
-            st.image(image, use_container_width=True)
-            
-            user_text = st.text_input("Tes modifications (ex: blond, plage...)")
+    try:
+        # On lit les données tout de suite pour éviter le "Connecting"
+        image_data = uploaded_file.read()
+        image = Image.open(io.BytesIO(image_data))
+        
+        # AFFICHAGE AUTOMATIQUE : On affiche l'image dès qu'elle est lue
+        st.image(image, caption="Identité source détectée", use_container_width=True)
+        
+        # Interface de modification
+        user_text = st.text_input("Modifications (ex: blond, bijoux, plage...) :", key="mod_input")
 
-            if st.button("🔥 GÉNÉRER", type="primary"):
-                if user_text:
-                    with st.spinner("L'IA analyse..."):
-                        instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif en anglais."
-                        response = model.generate_content([instruction, image])
-                        st.code(response.text)
-                else:
-                    st.warning("Écris tes modifs !")
-                    
-        except Exception as e:
-            st.error("Connexion perdue pendant l'envoi. Réessaie.")
-            if st.button("🔄 Relancer la connexion"):
-                st.rerun()
+        if st.button("🔥 GÉNÉRER LE PROMPT", type="primary"):
+            if user_text:
+                model = get_ai_model()
+                # La consigne pour garder le visage à 100%
+                instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif en anglais."
+                
+                with st.spinner("L'IA prépare votre expertise..."):
+                    response = model.generate_content([instruction, image])
+                    st.markdown("### ✨ Résultat à copier :")
+                    st.code(response.text, language="markdown")
+            else:
+                st.warning("Veuillez décrire vos changements.")
+                
+    except Exception as e:
+        st.error(f"Erreur d'affichage : {e}")
+        if st.button("🔄 Réactualiser l'envoi"):
+            st.rerun()
 
-# 3. Bouton pour forcer le nettoyage du serveur si ça bloque
-st.sidebar.button("Réinitialiser l'App", on_click=lambda: st.cache_data.clear())
+# --- 3. MAINTENANCE ---
+st.sidebar.markdown("---")
+if st.sidebar.button("♻️ Nettoyer la session"):
+    st.cache_data.clear()
+    st.rerun()
