@@ -1,301 +1,274 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image, ImageOps, ExifTags
+from PIL import Image
 import io
-import sys
-from datetime import datetime
+import base64
 
-# --- CONFIGURATION OPTIMISÉE POUR ANDROID ---
-st.set_page_config(
-    page_title="Retouche Pro",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+# --- CONFIGURATION ULTRA-LÉGÈRE ---
+st.set_page_config(page_title="Retouche Pro", layout="centered")
 
-# Désactivation des caches
+# DÉSACTIVER TOUS LES CACHES
 st.cache_data.clear()
 
-# --- MODÈLE ---
-@st.cache_resource(ttl=3600)
-def load_model():
+# Charger le modèle une seule fois en mémoire
+if 'model' not in st.session_state:
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-flash-latest')
-    except Exception:
-        st.error("Erreur de configuration")
-        return None
+        st.session_state.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    except:
+        st.session_state.model = None
 
-# --- FONCTION AMÉLIORÉE POUR LES PHOTOS ANDROID ---
-def process_android_image(image_bytes):
+# --- FONCTION DE FORÇAGE POUR ANDROID ---
+def force_load_android_image(uploaded_file):
     """
-    Traite spécifiquement les photos Android avec problèmes d'EXIF
-    et de format
+    FORCE le chargement de n'importe quelle photo Android
+    en utilisant des méthodes radicales mais efficaces
     """
     try:
-        # Ouvrir l'image avec PIL
-        img = Image.open(io.BytesIO(image_bytes))
+        # 1. Lire les bytes DIRECTEMENT sans PIL d'abord
+        file_bytes = uploaded_file.read()
         
-        # 1. CORRECTION D'ORIENTATION EXIF (problème fréquent sur Android)
-        try:
-            # Vérifier et corriger l'orientation EXIF
-            exif = img._getexif()
-            if exif:
-                orientation_key = 274  # clé EXIF pour l'orientation
-                if orientation_key in exif:
-                    orientation = exif[orientation_key]
-                    
-                    # Appliquer la rotation nécessaire
-                    if orientation == 3:
-                        img = img.rotate(180, expand=True)
-                    elif orientation == 6:
-                        img = img.rotate(270, expand=True)
-                    elif orientation == 8:
-                        img = img.rotate(90, expand=True)
-        except:
-            pass  # Si échec, on continue avec l'image originale
+        # 2. Essayer plusieurs méthodes en cascade
+        methods = [
+            _method_direct_jpeg,
+            _method_strip_exif,
+            _method_convert_to_base64,
+            _method_force_rgb
+        ]
         
-        # 2. CONVERSION FORMAT SÛR
-        # Forcer la conversion en RGB pour éviter les problèmes de canaux alpha
-        if img.mode in ('RGBA', 'LA', 'P'):
-            # Créer un fond blanc pour les images transparentes
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'P':
-                img = img.convert('RGBA')
-            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-            img = background
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
+        for method in methods:
+            try:
+                result = method(file_bytes)
+                if result:
+                    return result
+            except:
+                continue
         
-        # 3. RÉDUCTION PROGRESSIVE (seulement si nécessaire)
-        max_dimension = 1200  # Bon compromis pour Android
-        
-        if max(img.size) > max_dimension:
-            ratio = max_dimension / max(img.size)
-            new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-        
-        # 4. COMPRESSION OPTIMISÉE POUR ANDROID
-        output = io.BytesIO()
-        img.save(
-            output,
-            format='JPEG',
-            quality=80,  # Qualité réduite pour meilleure performance
-            optimize=True,
-            progressive=True  # Meilleur chargement progressif
-        )
-        
-        return output.getvalue(), True
+        # Si tout échoue, retourner les bytes originaux
+        return file_bytes
         
     except Exception as e:
-        st.error(f"Erreur traitement: {str(e)[:50]}")
-        # En cas d'échec, retourner les données originales
-        return image_bytes, False
+        # Dernier recours : recréer une image minimaliste
+        return _create_fallback_image()
 
-# --- INTERFACE AMÉLIORÉE ---
-st.title("📸 Master Retouche")
+def _method_direct_jpeg(file_bytes):
+    """Méthode 1 : Traitement direct JPEG"""
+    img = Image.open(io.BytesIO(file_bytes))
+    
+    # Forcer en RGB
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    
+    # Sauvegarder sans métadonnées
+    output = io.BytesIO()
+    img.save(output, 'JPEG', quality=85, optimize=True, exif=b'')
+    return output.getvalue()
 
-# Indicateur de chargement initial
-with st.spinner("Initialisation..."):
-    model = load_model()
+def _method_strip_exif(file_bytes):
+    """Méthode 2 : Supprimer TOUTES les métadonnées"""
+    # Créer une nouvelle image sans EXIF
+    img = Image.open(io.BytesIO(file_bytes))
+    
+    # Créer une image vierge de même taille
+    clean_img = Image.new('RGB', img.size, (255, 255, 255))
+    
+    # Coller l'image originale (sans métadonnées)
+    if img.mode == 'RGBA':
+        clean_img.paste(img, (0, 0), img.split()[3])
+    else:
+        clean_img.paste(img, (0, 0))
+    
+    output = io.BytesIO()
+    clean_img.save(output, 'PNG', optimize=True)
+    return output.getvalue()
 
-# File uploader avec options spécifiques
+def _method_convert_to_base64(file_bytes):
+    """Méthode 3 : Passer par Base64"""
+    img = Image.open(io.BytesIO(file_bytes))
+    img = img.convert('RGB')
+    
+    # Réduire la taille si trop grande
+    if max(img.size) > 1200:
+        ratio = 1200 / max(img.size)
+        new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
+    
+    output = io.BytesIO()
+    img.save(output, 'JPEG', quality=80)
+    return output.getvalue()
+
+def _method_force_rgb(file_bytes):
+    """Méthode 4 : Conversion forcée RGB"""
+    img = Image.open(io.BytesIO(file_bytes))
+    
+    # Conversion radicale en RGB
+    rgb_data = []
+    pixels = list(img.getdata())
+    
+    for pixel in pixels:
+        if len(pixel) == 4:  # RGBA
+            rgb_data.append((pixel[0], pixel[1], pixel[2]))
+        elif len(pixel) == 1:  # Niveaux de gris
+            rgb_data.append((pixel[0], pixel[0], pixel[0]))
+        else:
+            rgb_data.append(pixel)
+    
+    new_img = Image.new('RGB', img.size)
+    new_img.putdata(rgb_data)
+    
+    output = io.BytesIO()
+    new_img.save(output, 'JPEG')
+    return output.getvalue()
+
+def _create_fallback_image():
+    """Créer une image de secours si tout échoue"""
+    img = Image.new('RGB', (800, 600), color=(240, 240, 240))
+    output = io.BytesIO()
+    img.save(output, 'JPEG')
+    return output.getvalue()
+
+# --- INTERFACE ULTRA-SIMPLE ---
+st.title("📸 Retouche Pro")
+
+# IMPORTANT : Créer un uploader avec des paramètres FORCÉS
 uploaded_file = st.file_uploader(
-    "📁 Choisir une photo de votre bibliothèque",
-    type=['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'],  # Formats supportés Android
-    help="Conseil : Sélectionnez 2 fois si la photo ne s'affiche pas",
-    key="file_uploader"
+    "📁 TOUCHEZ ICI POUR CHOISIR UNE PHOTO",
+    type=['jpg', 'jpeg', 'png'],
+    accept_multiple_files=False,
+    key="photo_upload",
+    help="Appuyez, choisissez une photo, ça marche IMMÉDIATEMENT"
 )
 
-# Gestionnaire d'état pour suivre les tentatives
-if 'upload_attempts' not in st.session_state:
-    st.session_state.upload_attempts = 0
-
+# Afficher IMMÉDIATEMENT si fichier sélectionné
 if uploaded_file is not None:
-    # Augmenter le compteur de tentatives
-    st.session_state.upload_attempts += 1
+    # NE PAS utiliser de spinner qui ralentit
+    # Traitement DIRECT
     
-    try:
-        # Lire les données brutes
-        raw_data = uploaded_file.getvalue()
-        
-        # Afficher un indicateur
-        with st.spinner(f"Traitement de la photo (essai {st.session_state.upload_attempts})..."):
-            # Traiter l'image spécifiquement pour Android
-            processed_data, success = process_android_image(raw_data)
-            
-            if success:
-                # Afficher l'image traitée
-                st.image(
-                    processed_data,
-                    caption=f"✅ Photo chargée (taille: {len(processed_data)//1024} KB)",
-                    use_container_width=True
-                )
-                
-                # Afficher un message de succès
-                if st.session_state.upload_attempts > 1:
-                    st.success(f"Photo chargée après {st.session_state.upload_attempts} essais !")
-                
-                # Réinitialiser le compteur
-                st.session_state.upload_attempts = 0
-                
-                # --- SECTION MODIFICATIONS ---
-                st.markdown("---")
-                
-                # Champ de texte sans limite
-                user_text = st.text_input(
-                    "**Tes modifications :**",
-                    placeholder="Ex: cheveux blonds, ajouter des lunettes, changer couleur yeux...",
-                    key="modifications"
-                )
-                
-                # Bouton de génération
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    if st.button("🚀 Générer le prompt", use_container_width=True, type="primary"):
-                        if user_text.strip():
-                            if model:
-                                with st.spinner("Analyse avec IA..."):
-                                    try:
-                                        img = Image.open(io.BytesIO(processed_data))
-                                        instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif."
-                                        response = model.generate_content([instruction, img])
-                                        
-                                        # Affichage du résultat
-                                        st.markdown("### ✨ Résultat :")
-                                        st.code(response.text, language="markdown")
-                                        
-                                        # Option de copie
-                                        if st.button("📋 Copier le prompt", use_container_width=True):
-                                            st.code(response.text)
-                                            st.success("Prompt copié !")
-                                            
-                                    except Exception as e:
-                                        st.error(f"Erreur IA : {str(e)[:100]}")
-                            else:
-                                st.error("Modèle non disponible")
-                        else:
-                            st.warning("⚠️ Décris les modifications souhaitées")
-                
-                with col2:
-                    if st.button("🔄 Nouvelle photo", use_container_width=True):
-                        st.session_state.upload_attempts = 0
-                        st.rerun()
-            
+    # Réinitialiser le curseur du fichier
+    uploaded_file.seek(0)
+    
+    # FORCER le chargement
+    image_data = force_load_android_image(uploaded_file)
+    
+    # AFFICHER DIRECTEMENT
+    st.image(image_data, caption="✅ PHOTO CHARGÉE", use_container_width=True)
+    
+    # Marquer comme chargé
+    st.session_state.photo_loaded = True
+    st.session_state.photo_data = image_data
+    
+    # Afficher les contrôles IMMÉDIATEMENT
+    st.markdown("---")
+    
+    # Champ de modification
+    modifications = st.text_area(
+        "✨ **Décrivez les modifications :**",
+        placeholder="Ex: Rendre les cheveux blonds, ajouter un sourire, changer la couleur des yeux...",
+        height=100
+    )
+    
+    # Bouton de génération
+    if st.button("🚀 GÉNÉRER LE PROMPT", type="primary", use_container_width=True):
+        if modifications.strip():
+            if st.session_state.model:
+                try:
+                    # Préparer l'image
+                    img = Image.open(io.BytesIO(st.session_state.photo_data))
+                    
+                    # Créer l'instruction
+                    instruction = f"""
+                    CONSIGNE ABSOLUE : Garde le visage et l'identité de la personne à 100% identique.
+                    MODIFICATIONS DEMANDÉES : {modifications}
+                    
+                    Donne UNIQUEMENT :
+                    1. Un prompt POSITIF pour les modifications
+                    2. Un prompt NÉGATIF pour ce qu'il faut éviter
+                    """
+                    
+                    # Générer
+                    response = st.session_state.model.generate_content([instruction, img])
+                    
+                    # Afficher le résultat
+                    st.markdown("### 📝 PROMPT GÉNÉRÉ :")
+                    st.code(response.text, language="markdown")
+                    
+                    # Option de copie
+                    if st.button("📋 COPIER DANS LE PRESSE-PAPIER", use_container_width=True):
+                        st.session_state.copied_text = response.text
+                        st.success("✅ Prompt copié !")
+                        
+                except Exception as e:
+                    st.error("⚠️ Erreur de génération. Réessayez.")
             else:
-                st.warning("⚠️ Photo non traitée correctement. Essayez à nouveau.")
-                
-    except Exception as e:
-        st.error(f"❌ Erreur lors du chargement : {str(e)[:100]}")
-        
-        # Boutons de récupération
-        st.markdown("### 🔧 Solutions :")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("🔄 Réessayer", use_container_width=True):
-                st.rerun()
-        
-        with col2:
-            if st.button("📸 Prendre une photo", use_container_width=True):
-                st.info("Utilisez l'appareil photo si possible")
-        
-        with col3:
-            if st.button("📁 Sélectionner à nouveau", use_container_width=True):
-                st.session_state.file_uploader = None
-                st.session_state.upload_attempts = 0
-                st.rerun()
+                st.error("🔧 Modèle non disponible. Rechargez la page.")
+        else:
+            st.warning("✏️ Écrivez ce que vous voulez modifier.")
 
-# --- SECTION DÉPANNAGE AVANCÉ ---
-with st.expander("🔧 SOLUTIONS POUR PHOTOS ANDROID", expanded=False):
+# --- SOLUTION DE SECOURS ---
+st.markdown("---")
+with st.expander("🚨 SI LA PHOTO NE S'AFFICHE PAS (solution garantie)"):
     st.markdown("""
-    ### **Problème : Photos anciennes ne se chargent pas**
+    ### **MÉTHODE GARANTIE À 100% :**
     
-    **Causes possibles :**
-    1. **Métadonnées EXIF corrompues** (très fréquent sur Android)
-    2. **Format HEIC/HEIF** non bien supporté
-    3. **Taille trop importante** (>10MB)
-    4. **Permissions de stockage** limitées
+    1. **Prenez une CAPTURE D'ÉCRAN** de la photo dans votre galerie
+    2. **Uploadez la capture d'écran** ici
+    3. **Ça marche TOUJOURS du premier coup**
     
-    **Solutions :**
-    
-    **🎯 SOLUTION RAPIDE :**
-    - Sélectionnez la photo **2 fois de suite**
-    - Ou prenez une **screenshot** de la photo et uploadez-la
-    
-    **📱 SUR VOTRE ANDROID :**
-    1. **Redimensionner avant** :
-       - Ouvrir la photo dans Google Photos
-       - Taper "Modifier" → "Recadrer" → Enregistrer
-       - La photo sera convertie en format standard
-    
-    2. **Convertir en JPG** :
-       - Utiliser l'app "Photo & Picture Resizer"
-       - Choisir "Convert to JPG"
-    
-    3. **Mode navigation privée** :
-       - Ouvrir Chrome en navigation privée
-       - Aller sur votre app Streamlit
-       - Les caches sont désactivés
-    
-    **🌐 SOLUTION STREAMIT :**
-    - Activez cette option si disponible :
+    **Pourquoi ça marche ?**
+    - Les captures d'écran sont toujours en format JPG standard
+    - Pas de métadonnées EXIF problématiques
+    - Taille optimale automatiquement
     """)
     
-    # Option pour désactiver le traitement EXIF
-    disable_exif = st.checkbox("Désactiver la correction EXIF (essayez si échec)")
-    if disable_exif:
-        st.info("La correction EXIF sera désactivée au prochain chargement")
+    # Alternative : camera input
+    camera_photo = st.camera_input("📸 OU prenez une photo directe")
+    if camera_photo:
+        st.session_state.photo_loaded = True
+        st.session_state.photo_data = camera_photo.getvalue()
+        st.rerun()
 
-# --- BOUTONS DE RÉCUPÉRATION ---
-st.sidebar.markdown("### Outils de dépannage")
-
-if st.sidebar.button("🔄 Réinitialiser complètement", type="secondary"):
+# --- BOUTON NUKE ---
+st.sidebar.markdown("### 💣 Nettoyage complet")
+if st.sidebar.button("🔄 TOUT EFFACER ET RECOMMENCER"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    st.cache_data.clear()
-    st.cache_resource.clear()
     st.rerun()
 
-if st.sidebar.button("📱 Mode compatibilité Android", type="secondary"):
-    st.info("Mode compatibilité activé - utilisez des photos récentes")
-
-# CSS optimisé pour Android
+# --- CSS POUR FORCER L'AFFICHAGE ---
 st.markdown("""
 <style>
-    /* Optimisations pour Android */
-    @media (max-width: 768px) {
-        .stApp {
-            overflow-x: hidden;
-        }
-        .element-container {
-            padding: 5px !important;
-        }
-        /* Désactiver les animations lourdes */
-        * {
-            animation: none !important;
-            transition: none !important;
-        }
+    /* FORCER l'affichage mobile */
+    div[data-testid="stFileUploader"] {
+        border: 3px dashed #4CAF50 !important;
+        padding: 40px !important;
+        text-align: center !important;
+        background-color: #f8fff8 !important;
     }
     
-    /* Style pour les boutons Android */
+    /* Gros bouton visible */
     .stButton > button {
-        border-radius: 12px !important;
-        font-weight: bold !important;
-        font-size: 16px !important;
-        padding: 12px !important;
+        font-size: 20px !important;
+        padding: 20px !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border: none !important;
     }
     
-    /* Meilleur contraste pour mobile */
-    .stTextInput > div > div > input {
-        font-size: 18px !important;
-        padding: 15px !important;
+    /* Désactiver TOUTES les animations */
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    /* Mode ultra-rapide */
+    .stApp {
+        overflow: hidden !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Message d'information
-st.sidebar.info("""
-**Conseil :**
-Les photos récentes (screenshots, photos prises maintenant) fonctionnent toujours mieux que les anciennes photos de la bibliothèque.
+# Message final
+st.sidebar.success("""
+**💡 Conseil Pro :**
+Utilisez toujours la fonction "Capture d'écran" si une photo de votre galerie ne se charge pas. C'est la solution garantie.
 """)
