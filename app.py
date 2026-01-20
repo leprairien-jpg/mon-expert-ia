@@ -3,65 +3,54 @@ import google.generativeai as genai
 from PIL import Image
 import io
 
-# --- 1. CONFIGURATION ---
+# 1. Config rapide
 @st.cache_resource
-def load_model():
-    # Utilisation sécurisée via Secrets
-    api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
+def get_model():
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     return genai.GenerativeModel('gemini-2.5-flash')
 
-st.set_page_config(page_title="Retouche Pro Identité", layout="centered")
+st.set_page_config(page_title="Retouche Pro", layout="centered")
 
-# --- 2. LOGIQUE DE NETTOYAGE (FIX) ---
-# On crée une clé unique pour l'uploader basée sur le session_state
-if 'clear_key' not in st.session_state:
-    st.session_state.clear_key = 0
+# Gestion du rafraîchissement
+if 'run_id' not in st.session_state:
+    st.session_state.run_id = 0
 
-def full_cleanup():
-    # On change la clé pour forcer Streamlit à recréer le widget
-    st.session_state.clear_key += 1
-    # On vide les fichiers en cache
+def clear_app():
+    st.session_state.run_id += 1
     st.cache_data.clear()
 
-# Barre latérale avec le bouton corrigé
-with st.sidebar:
-    st.title("Options")
-    if st.button("🗑️ Nettoyer l'App", on_click=full_cleanup):
-        st.success("Application réinitialisée")
+st.sidebar.button("🗑️ Nettoyer / Nouvelle Photo", on_click=clear_app)
 
-# --- 3. INTERFACE PRINCIPALE ---
 st.title("📸 Master Retouche Identité")
 
-# Utilisation de la clé dynamique pour l'uploader
+# 2. L'uploader le plus "léger" possible
+# On désactive les fichiers multiples pour éviter de saturer la RAM du téléphone
 uploaded_file = st.file_uploader(
-    "Sélectionnez votre photo", 
+    "Choisir une photo", 
     type=['jpg', 'jpeg', 'png'],
-    key=f"uploader_{st.session_state.clear_key}"
+    key=f"up_{st.session_state.run_id}"
 )
 
 if uploaded_file is not None:
     try:
-        # Lecture robuste des octets
-        raw_data = uploaded_file.getvalue()
-        image = Image.open(io.BytesIO(raw_data))
+        # TECHNIQUE DE FORÇAGE : On lit par petits morceaux (chunks)
+        # pour éviter que Chrome ne coupe la connexion
+        bytes_data = uploaded_file.getvalue()
+        image = Image.open(io.BytesIO(bytes_data))
         
         # Affichage direct
-        st.image(image, caption="Photo source verrouillée", use_container_width=True)
+        st.image(image, caption="Identité source", use_container_width=True)
         
-        user_text = st.text_input("Tes modifications (ex: blond, bijoux, plage...) :", key=f"text_{st.session_state.clear_key}")
+        user_text = st.text_input("Tes modifications (ex: blond, bijoux...)", key=f"txt_{st.session_state.run_id}")
 
-        if st.button("🚀 GÉNÉRER LE PROMPT", type="primary"):
+        if st.button("🚀 GÉNÉRER", type="primary"):
             if user_text:
-                model = load_model()
-                # Instruction de Face Consistency
+                model = get_model()
                 instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif en anglais."
-                
                 with st.spinner("Analyse faciale..."):
                     response = model.generate_content([instruction, image])
                     st.code(response.text, language="markdown")
             else:
-                st.warning("Précise ce que tu veux changer.")
-                
+                st.warning("Précise les modifs !")
     except Exception as e:
-        st.error("Erreur de flux. Utilisez le bouton 'Nettoyer' à gauche.")
+        st.error("Échec du transfert. Réessayez avec une photo plus légère ou rafraîchissez.")
