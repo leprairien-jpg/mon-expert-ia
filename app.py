@@ -11,7 +11,7 @@ def load_model():
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
     # MODÈLE CORRIGÉ : utiliser le bon nom
-    return genai.GenerativeModel('gemini-2.5')
+    return genai.GenerativeModel('gemini-2.5-flash')
 
 st.set_page_config(page_title="Retouche Pro", layout="centered")
 
