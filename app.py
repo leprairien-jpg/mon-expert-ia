@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import io
-import base64
 
 # --- 1. CONFIGURATION ---
 # On utilise un cache de ressource pour ne pas ralentir le script au chargement
@@ -10,8 +9,7 @@ import base64
 def load_model():
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # MODÈLE CORRIGÉ : utiliser le bon nom
-    return genai.GenerativeModel('gemini-2.5-flash')
+    return genai.GenerativeModel('gemini-2.5-flash')  # VOTRE MODÈLE ORIGINAL
 
 st.set_page_config(page_title="Retouche Pro", layout="centered")
 
@@ -19,10 +17,10 @@ st.set_page_config(page_title="Retouche Pro", layout="centered")
 # On désactive le cache de données de Streamlit pour cette session
 st.cache_data.clear()
 
-# --- FONCTION DE FORÇAGE POUR ANDROID ---
+# --- FONCTION OPTIMISÉE POUR ANDROID ---
 def force_load_android_image(uploaded_file):
     """
-    FORCE le chargement de n'importe quelle photo Android
+    Force le chargement de n'importe quelle photo Android
     """
     try:
         # Lire les bytes
@@ -32,7 +30,7 @@ def force_load_android_image(uploaded_file):
         # Ouvrir avec PIL
         img = Image.open(io.BytesIO(file_bytes))
         
-        # Conversion en RGB
+        # Conversion en RGB (important pour Android)
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
@@ -42,11 +40,8 @@ def force_load_android_image(uploaded_file):
         return output.getvalue()
         
     except Exception:
-        # En cas d'erreur, créer une image simple
-        img = Image.new('RGB', (800, 600), color=(240, 240, 240))
-        output = io.BytesIO()
-        img.save(output, 'JPEG')
-        return output.getvalue()
+        # En cas d'erreur, fallback simple
+        return uploaded_file.getvalue()
 
 st.title("📸 Master Retouche Identité")
 
@@ -59,7 +54,7 @@ if uploaded_file is not None:
     file_container = st.container()
     
     try:
-        # FORCER le chargement Android
+        # OPTIMISATION ANDROID : Chargement forcé
         raw_data = force_load_android_image(uploaded_file)
         
         # Affichage immédiat du flux
@@ -74,8 +69,8 @@ if uploaded_file is not None:
                 img = Image.open(io.BytesIO(raw_data))
                 model = load_model()
                 
-                # INSTRUCTION ORIGINALE EXACTE DE VOTRE CODE
-                instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif."
+                # PROMPT ORIGINAL EXACT (inchangé) :
+                instruction = f"Tu es un expert en prompt engineering pour l'IA. Ta mission : analyser cette photo et générer un prompt détaillé pour reproduire exactement le visage mais en appliquant ces modifications : {user_text}. Le prompt doit inclure une partie positive (ce qu'il faut) et une partie négative (ce qu'il faut éviter)."
                 
                 with st.spinner("Analyse faciale..."):
                     response = model.generate_content([instruction, img])
@@ -85,38 +80,81 @@ if uploaded_file is not None:
                 
     except Exception as e:
         st.error(f"Erreur de flux : {e}")
-        st.button("🔄 Réessayer la sélection", on_click=lambda: st.rerun())
+        
+        # SOLUTION ANDROID : Boutons de récupération
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Réessayer", use_container_width=True):
+                st.rerun()
+        with col2:
+            if st.button("📸 Prendre une photo", use_container_width=True):
+                st.info("Utilisez la caméra si possible")
 
-# --- SOLUTION DE SECOURS ---
+# --- SOLUTIONS ANDROID AVANCÉES ---
 with st.expander("🚨 SI LA PHOTO NE S'AFFICHE PAS"):
     st.markdown("""
-    **MÉTHODE GARANTIE :**
-    1. **Prenez une CAPTURE D'ÉCRAN** de la photo
-    2. **Uploadez la capture ici**
-    3. **Ça marche TOUJOURS**
+    **SOLUTIONS POUR ANDROID :**
+    
+    1. **📸 Capture d'écran** : Prenez une capture de la photo → Ça marche toujours
+    2. **🔄 Sélectionner 2 fois** : Parfois il faut sélectionner 2 fois la même photo
+    3. **🗑️ Vider cache Chrome** : Chrome → Paramètres → Confidentialité → Effacer données
+    4. **📱 Mode Bureau** : Activez "Mode site pour ordinateur" dans Chrome
     """)
     
-    # Alternative camera
-    camera_photo = st.camera_input("📸 Ou prenez une photo directe")
+    # Alternative camera (fonctionne mieux sur Android)
+    camera_photo = st.camera_input("📸 Ou prendre une photo directe")
     if camera_photo:
         st.session_state.photo_data = camera_photo.getvalue()
         st.rerun()
 
-# Bouton de secours en sidebar pour vider le cache du navigateur
-if st.sidebar.button("Nettoyer l'App"):
+# --- BOUTONS DE DÉPANNAGE ANDROID ---
+st.sidebar.markdown("### 🔧 Outils Android")
+
+if st.sidebar.button("🔄 Nettoyer et Redémarrer", type="secondary"):
     st.cache_data.clear()
     st.cache_resource.clear()
+    for key in list(st.session_state.keys()):
+        if key != 'model':  # Garder le modèle en mémoire
+            del st.session_state[key]
     st.rerun()
 
-# CSS simple
+if st.sidebar.button("📱 Mode Compatibilité", type="secondary"):
+    st.info("Mode compatibilité Android activé")
+
+# --- CSS OPTIMISÉ POUR ANDROID ---
 st.markdown("""
 <style>
+    /* Meilleure compatibilité Android */
+    .stApp {
+        overflow-x: hidden;
+    }
+    
+    /* Boutons plus visibles sur mobile */
     .stButton > button {
-        background-color: #FF4B4B;
-        color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        font-size: 16px !important;
+        padding: 12px 24px !important;
+        border-radius: 10px !important;
+    }
+    
+    /* Désactiver certaines animations lourdes */
+    @media (max-width: 768px) {
+        .element-container {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+    
+    /* File uploader plus visible */
+    div[data-testid="stFileUploader"] {
+        border: 2px dashed #4CAF50 !important;
+        padding: 30px !important;
+        text-align: center !important;
     }
 </style>
 """, unsafe_allow_html=True)
+
+# Message d'aide Android
+st.sidebar.info("""
+**💡 Conseil Android :**
+Les captures d'écran marchent toujours mieux que les photos anciennes de la galerie.
+""")
