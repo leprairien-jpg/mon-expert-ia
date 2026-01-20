@@ -3,59 +3,58 @@ import google.generativeai as genai
 from PIL import Image
 import io
 
-# --- CONFIGURATION SÉCURISÉE ---
-try:
-    # On récupère la clé dans les Secrets de Streamlit pour éviter le ban Google
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=API_KEY)
-except Exception:
-    st.error("❌ Erreur : GEMINI_API_KEY non trouvée dans les Secrets Streamlit.")
-    st.stop()
+# --- 1. CONFIGURATION ---
+# On utilise un cache de ressource pour ne pas ralentir le script au chargement
+@st.cache_resource
+def load_model():
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel('gemini-2.5-flash')
 
-st.set_page_config(page_title="Prompt Master Pro", layout="centered")
-st.title("🚀 Prompt Master Engineering")
+st.set_page_config(page_title="Retouche Pro", layout="centered")
 
-# --- INTERFACE ---
-uploaded_file = st.file_uploader("Choisissez une photo", type=['jpg', 'jpeg', 'png'])
+# --- 2. FIX RADICAL POUR ANDROID ---
+# On désactive le cache de données de Streamlit pour cette session
+st.cache_data.clear()
+
+st.title("📸 Master Retouche Identité")
+
+# On utilise un widget simple sans fioritures pour maximiser la compatibilité
+uploaded_file = st.file_uploader("Sélectionnez votre photo", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
+    # TECHNIQUE COMMANDO : On lit le fichier et on l'affiche immédiatement
+    # sans passer par des fonctions intermédiaires qui font "bugger" Chrome
+    file_container = st.container()
+    
     try:
-        # Lecture directe pour affichage immédiat
-        image_bytes = uploaded_file.read()
-        image = Image.open(io.BytesIO(image_bytes))
-        st.image(image, caption="Image source chargée", use_container_width=True)
+        # Lecture directe des octets
+        raw_data = uploaded_file.getvalue()
         
-        user_text = st.text_input("Concept (ex: blond, bijoux, plage...) :")
+        # Affichage immédiat du flux
+        file_container.image(raw_data, caption="Photo détectée", use_container_width=True)
+        
+        # Une fois affichée, on prépare la transformation
+        user_text = st.text_input("Tes modifications (ex: blond, bijoux...) :")
 
-        if st.button("GÉNÉRER"):
+        if st.button("🚀 GÉNÉRER LE PROMPT", type="primary"):
             if user_text:
-                # Utilisation du modèle 2.5 Flash détecté sur ta session
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                # Conversion en image PIL seulement au moment du clic
+                img = Image.open(io.BytesIO(raw_data))
+                model = load_model()
                 
-                # Consigne stricte pour la ressemblance
-                instruction = f"""
-                Tu es un Maître Ingénieur en Prompt. 
-                CONSIGNE CRITIQUE : Garde le visage EXACT de la personne sur la photo, sans aucune déformation.
-                MODIFICATIONS : {user_text}.
-                Génère un PROMPT_ULTIME_POSITIF et un PROMPT_ULTIME_NÉGATIF en anglais pour Midjourney/Flux.
-                """
+                instruction = f"CONSIGNE : Garde le visage à 100%. MODIFS : {user_text}. Donne le prompt positif et négatif."
                 
-                with st.spinner("Analyse faciale en cours..."):
-                    # On repasse l'image et le texte à l'IA
-                    response = model.generate_content([instruction, image])
-                    st.markdown("### ✨ Résultat :")
-                    # Bloc de code avec bouton de copie intégré
+                with st.spinner("Analyse faciale..."):
+                    response = model.generate_content([instruction, img])
                     st.code(response.text, language="markdown")
             else:
-                st.warning("Veuillez saisir un concept.")
+                st.warning("Précise ce que tu veux changer.")
                 
     except Exception as e:
-        st.error(f"Erreur de chargement : {e}")
-        if st.button("Réessayer"):
-            st.rerun()
+        st.error(f"Erreur de flux : {e}")
+        st.button("🔄 Réessayer la sélection", on_click=lambda: st.rerun())
 
-# --- SIDEBAR DE NETTOYAGE ---
-st.sidebar.title("Maintenance")
-if st.sidebar.button("♻️ Réinitialiser l'App"):
-    st.cache_data.clear()
+# Bouton de secours en sidebar pour vider le cache du navigateur
+if st.sidebar.button("Nettoyer l'App"):
     st.rerun()
